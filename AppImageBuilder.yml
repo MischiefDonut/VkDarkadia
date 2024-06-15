@@ -3,11 +3,11 @@ version: 1
 AppDir:
   path: ./AppDir
   app_info:
-    id: com.VKDoom.app
-    name: VKDoom
+    id: com.Darkadia.app
+    name: Darkadia
     icon: game_icon.png
     version: latest
-    exec: ./vkdoom
+    exec: ./darkadia
     exec_args: $@
   apt:
     arch: amd64

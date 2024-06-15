@@ -9,11 +9,11 @@
 	<key>CFBundleIconFile</key>
 	<string>zdoom.icns</string>
 	<key>CFBundleIdentifier</key>
-	<string>org.vkdoom.app</string>
+	<string>com.mischiefdonut.darkadia</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>VKDoom</string>
+	<string>Darkadia</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
