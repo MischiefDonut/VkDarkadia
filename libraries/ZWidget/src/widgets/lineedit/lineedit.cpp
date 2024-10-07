@@ -1,4 +1,4 @@
-
+#include <algorithm>
 #include "widgets/lineedit/lineedit.h"
 #include "core/utf8reader.h"
 #include "core/colorf.h"
@@ -19,6 +19,8 @@ LineEdit::LineEdit(Widget* parent) : Widget(parent)
 
 LineEdit::~LineEdit()
 {
+	delete timer;
+	delete scroll_timer;
 }
 
 bool LineEdit::IsReadOnly() const

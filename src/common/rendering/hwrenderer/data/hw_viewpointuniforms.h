@@ -20,6 +20,9 @@ struct HWViewpointUniforms
 	VSMatrix mNormalViewMatrix;
 	FVector4 mCameraPos;
 	FVector4 mClipLine;
+	
+	int mViewOffsetX = 0;
+	int mViewOffsetY = 0;
 
 	float mGlobVis = 1.f;
 	int mPalLightLevels = 0;
@@ -29,6 +32,8 @@ struct HWViewpointUniforms
 	int mShadowFilter = 1;
 
 	int mLightBlendMode = 0;
+
+	int mLightTilesWidth = 0;
 
 	void CalcDependencies()
 	{

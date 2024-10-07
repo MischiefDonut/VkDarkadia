@@ -1346,6 +1346,11 @@ class GLDefsParser
 				sc.MustGetFloat();
 				mlay.SpecularLevel = (float)sc.Float;
 			}
+			else if (sc.Compare("depthfadethreshold"))
+			{
+				sc.MustGetFloat();
+				tex->DepthFadeThreshold = (float)sc.Float;
+			}
 			else if (sc.Compare("speed"))
 			{
 				sc.MustGetFloat();
@@ -1355,6 +1360,12 @@ class GLDefsParser
 			{
 				sc.MustGetString();
 				usershader.shader = sc.String;
+			}
+			else if (sc.Compare("disablealphatest"))
+			{
+				tex->SetTranslucent(true);
+				if (usershader.shader.IsNotEmpty())
+					usershader.disablealphatest = true;
 			}
 			else if (sc.Compare("texture"))
 			{

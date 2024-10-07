@@ -92,6 +92,9 @@ void AddLightToList(FDynLightData &dld, int group, FDynamicLight * light, bool f
 		cs = 1.0f;
 	}
 
+	if (light->target)
+		cs *= (float)light->target->Alpha;
+
 	float r = light->GetRed() / 255.0f * cs;
 	float g = light->GetGreen() / 255.0f * cs;
 	float b = light->GetBlue() / 255.0f * cs;
@@ -135,7 +138,7 @@ void AddLightToList(FDynLightData &dld, int group, FDynamicLight * light, bool f
 		spotDirY = float(-negPitch.Sin());
 		spotDirZ = float(-Angle.Sin() * xzLen);
 	}
-	float sourceRadius = light->GetSourceRadius();
+	float softShadowRadius = light->GetSoftShadowRadius();
 
 	float *data = &dld.arrays[i][dld.arrays[i].Reserve(16)];
 	data[0] = float(pos.X);
@@ -152,7 +155,7 @@ void AddLightToList(FDynLightData &dld, int group, FDynamicLight * light, bool f
 	data[11] = lightType;
 	data[12] = spotInnerAngle;
 	data[13] = spotOuterAngle;
-	data[14] = sourceRadius;
+	data[14] = softShadowRadius;
 	data[15] = 0.0f; // unused
 }
 

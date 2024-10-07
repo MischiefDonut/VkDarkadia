@@ -30,6 +30,7 @@
 #ifndef __R_DEFS_H__
 #define __R_DEFS_H__
 
+#include "levelmeshhelper.h"
 #include "doomdef.h"
 
 #include "m_bbox.h"
@@ -62,7 +63,6 @@ struct sector_t;
 class AActor;
 struct FSection;
 struct FLevelLocals;
-struct DoomLevelMeshSurface;
 
 const uint16_t NO_INDEX = 0xffffu;
 const uint32_t NO_SIDE = 0xffffffffu;
@@ -303,6 +303,7 @@ struct secplane_t
 	DVector3 normal;
 	double  D, negiC;	// negative iC because that also saves a negation in all methods using this.
 public:
+	bool dithertransflag;	// Render plane with dithering transparency shader (gets reset every frame)
 	friend FSerializer &Serialize(FSerializer &arc, const char *key, secplane_t &p, secplane_t *def);
 
 	void set(double aa, double bb, double cc, double dd)
@@ -503,6 +504,8 @@ enum
 	SECMF_OVERLAPPING		= 512,	// floor and ceiling overlap and require special renderer action.
 	SECMF_NOSKYWALLS		= 1024,	// Do not draw "sky walls"
 	SECMF_LIFT				= 2048,	// For MBF monster AI
+	SECMF_HURTMONSTERS		= 4096, // Monsters in this sector are hurt like players.
+	SECMF_HARMINAIR			= 8192, // Actors in this sector are also hurt mid-air.
 };
 
 enum
@@ -977,6 +980,17 @@ public:
 		FTextureID old = planes[pos].Texture;
 		planes[pos].Texture = tex;
 		if (floorclip && pos == floor && tex != old) AdjustFloorClip();
+		if (tex != old)
+		{
+			if(pos)
+			{
+				LevelMeshUpdater->FloorTextureChanged(this);
+			}
+			else
+			{
+				LevelMeshUpdater->CeilingTextureChanged(this);
+			}
+		}
 	}
 
 	double GetPlaneTexZ(int pos) const
@@ -986,19 +1000,33 @@ public:
 
 	void SetPlaneTexZQuick(int pos, double val)	// For the *FakeFlat functions which do not need to have the overlap checked.
 	{
+		auto old = planes[pos].TexZ;
 		planes[pos].TexZ = val;
+
+		if (val != old)
+		{
+			//not sure actually what TexZ does, so changing passing this as "Other"
+			if(pos)
+			{
+				LevelMeshUpdater->SectorChangedOther(this);
+			}
+			else
+			{
+				LevelMeshUpdater->SectorChangedOther(this);
+			}
+		}
 	}
 
 	void SetPlaneTexZ(int pos, double val, bool dirtify = false)	// This mainly gets used by init code. The only place where it must set the vertex to dirty is the interpolation code.
 	{
-		planes[pos].TexZ = val;
+		SetPlaneTexZQuick(pos, val);
 		if (dirtify) SetAllVerticesDirty();
 		CheckOverlap();
 	}
 
 	void ChangePlaneTexZ(int pos, double val)
 	{
-		planes[pos].TexZ += val;
+		SetPlaneTexZQuick(pos, planes[pos].TexZ + val);
 		SetAllVerticesDirty();
 		CheckOverlap();
 	}
@@ -1011,11 +1039,13 @@ public:
 	void ChangeLightLevel(int newval)
 	{
 		lightlevel = ClampLight(lightlevel + newval);
+		LevelMeshUpdater->SectorLightChanged(this);
 	}
 
 	void SetLightLevel(int newval)
 	{
 		lightlevel = ClampLight(newval);
+		LevelMeshUpdater->SectorLightChanged(this);
 	}
 
 	int GetLightLevel() const
@@ -1186,6 +1216,8 @@ enum
 	WALLF_ABSLIGHTING_TOP		= WALLF_ABSLIGHTING_TIER << 0, 	// Top tier light is absolute instead of relative
 	WALLF_ABSLIGHTING_MID		= WALLF_ABSLIGHTING_TIER << 1, 	// Mid tier light is absolute instead of relative
 	WALLF_ABSLIGHTING_BOTTOM 	= WALLF_ABSLIGHTING_TIER << 2,	// Bottom tier light is absolute instead of relative
+
+	WALLF_DITHERTRANS			= 8192,	// Render with dithering transparency shader (gets reset every frame)
 };
 
 struct side_t
@@ -1257,7 +1289,7 @@ struct side_t
 	uint16_t	Flags;
 	int			UDMFIndex;		// needed to access custom UDMF fields which are stored in loading order.
 	FLightNode * lighthead;		// all dynamic lights that may affect this wall
-	TArrayView<DoomLevelMeshSurface*> surface; // all mesh surfaces belonging to this sidedef
+	TArrayView<int> LightmapTiles; // all lightmap tiles belonging to this sidedef
 	seg_t **segs;	// all segs belonging to this sidedef in ascending order. Used for precise rendering
 	int numsegs;
 	int sidenum;
@@ -1286,7 +1318,9 @@ struct side_t
 	}
 	void SetTexture(int which, FTextureID tex)
 	{
+		auto old = textures[which].texture;
 		textures[which].texture = tex;
+		if (old != tex) LevelMeshUpdater->SideTextureChanged(this, which);
 	}
 
 	void SetTextureXOffset(int which, double offset)
@@ -1664,6 +1698,7 @@ struct subsector_t
 	uint32_t	numlines;
 	uint16_t	flags;
 	short		mapsection;
+	FBoundingBox	bbox; // [DVR] For alternative space culling in orthographic projection with no fog of war
 
 	// subsector related GL data
 	int				validcount;
@@ -1674,7 +1709,7 @@ struct subsector_t
 									// 2: has one-sided walls
 	FPortalCoverage	portalcoverage[2];
 	TArray<DVisualThinker *> sprites;
-	TArrayView<DoomLevelMeshSurface*> surface[2]; // all mesh surfaces belonging to this subsector
+	TArrayView<int> LightmapTiles[2]; // all lightmap tiles belonging to this subsector
 };
 
 

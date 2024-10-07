@@ -1,4 +1,5 @@
 //-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 // Copyright 1993-1996 id Software
 // Copyright 1999-2016 Randy Heit
 // Copyright 2002-2016 Christoph Oelckers
@@ -163,6 +164,7 @@ bool M_SetSpecialMenu(FName& menu, int param);	// game specific checks
 
 const FIWADInfo *D_FindIWAD(TArray<FString> &wadfiles, const char *iwad, const char *basewad);
 void InitWidgetResources(const char* basewad);
+void CloseWidgetResources();
 
 // PUBLIC FUNCTION PROTOTYPES ----------------------------------------------
 
@@ -664,6 +666,19 @@ CUSTOM_CVAR(Int, compatmode, 0, CVAR_ARCHIVE|CVAR_NOINITCALL)
 			COMPATF_TRACE | COMPATF_HITSCAN | COMPATF_MISSILECLIP | COMPATF_MASKEDMIDTEX | COMPATF_SOUNDTARGET;
 		w = COMPATF2_POINTONLINE | COMPATF2_EXPLODE1 | COMPATF2_EXPLODE2 | COMPATF2_AVOID_HAZARDS | COMPATF2_STAYONLIFT | COMPATF2_NOMBF21;
 		break;
+
+	case 8: // MBF21 compat mode
+		v = COMPATF_TRACE | COMPATF_SOUNDTARGET | COMPATF_BOOMSCROLL | COMPATF_MISSILECLIP | COMPATF_CROSSDROPOFF |
+			COMPATF_MUSHROOM | COMPATF_MBFMONSTERMOVE | COMPATF_NOBLOCKFRIENDS | COMPATF_MASKEDMIDTEX;
+		w = COMPATF2_EXPLODE1 | COMPATF2_AVOID_HAZARDS | COMPATF2_STAYONLIFT;
+		break;
+
+	case 9: // Stricter MBF21 compatibility
+		v = COMPATF_NOBLOCKFRIENDS | COMPATF_MBFMONSTERMOVE | COMPATF_INVISIBILITY |
+			COMPATF_NOTOSSDROPS | COMPATF_MUSHROOM | COMPATF_NO_PASSMOBJ | COMPATF_BOOMSCROLL | COMPATF_WALLRUN |
+			COMPATF_TRACE | COMPATF_HITSCAN | COMPATF_MISSILECLIP | COMPATF_CROSSDROPOFF | COMPATF_MASKEDMIDTEX | COMPATF_SOUNDTARGET;
+		w = COMPATF2_POINTONLINE | COMPATF2_EXPLODE1 | COMPATF2_EXPLODE2 | COMPATF2_AVOID_HAZARDS | COMPATF2_STAYONLIFT;
+		break;
 	}
 	compatflags = v;
 	compatflags2 = w;
@@ -715,6 +730,8 @@ CVAR (Flag, compat_railing,				compatflags2, COMPATF2_RAILING);
 CVAR (Flag, compat_avoidhazard,			compatflags2, COMPATF2_AVOID_HAZARDS);
 CVAR (Flag, compat_stayonlift,			compatflags2, COMPATF2_STAYONLIFT);
 CVAR (Flag, compat_nombf21,				compatflags2, COMPATF2_NOMBF21);
+CVAR (Flag, compat_voodoozombies,		compatflags2, COMPATF2_VOODOO_ZOMBIES);
+CVAR (Flag, compat_fdteleport,			compatflags2, COMPATF2_FDTELEPORT);
 
 CVAR(Bool, vid_activeinbackground, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 
@@ -1007,8 +1024,6 @@ void D_Display ()
 	screen->FrameTimeNS = I_nsTime();
 	TexAnim.UpdateAnimations(screen->FrameTime);
 	R_UpdateSky(screen->FrameTime);
-	if (level.levelMesh) level.levelMesh->BeginFrame(level);
-	screen->BeginFrame();
 	twod->ClearClipRect();
 	if ((gamestate == GS_LEVEL || gamestate == GS_TITLELEVEL) && gametic != 0)
 	{
@@ -1018,6 +1033,9 @@ void D_Display ()
 		
 		D_Render([&]()
 		{
+			if (level.levelMesh) level.levelMesh->BeginFrame(level);
+			screen->BeginFrame();
+
 			viewsec = RenderView(&players[consoleplayer]);
 		}, true);
 
@@ -1068,6 +1086,9 @@ void D_Display ()
 	}
 	else
 	{
+		if (level.levelMesh) level.levelMesh->BeginFrame(level);
+		screen->BeginFrame();
+
 		twod->Begin(screen->GetWidth(), screen->GetHeight());
 		switch (gamestate)
 		{
@@ -1787,7 +1808,7 @@ bool ConsiderPatches (const char *arg)
 		if ( (f = BaseFileSearch(args[i].GetChars(), ".deh", false, GameConfig)) ||
 			 (f = BaseFileSearch(args[i].GetChars(), ".bex", false, GameConfig)) )
 		{
-			D_LoadDehFile(f);
+			D_LoadDehFile(f, 0);
 		}
 	}
 	return argc > 0;
@@ -1814,7 +1835,9 @@ static void GetCmdLineFiles(std::vector<std::string>& wadfiles)
 	int i, argc;
 
 	argc = Args->CheckParmList("-file", &args);
-	for (i = 0; i < argc; ++i)
+
+	// [RL0] Check for array size to only add new wads
+	for (i = wadfiles.size(); i < argc; ++i)
 	{
 		D_AddWildFile(wadfiles, args[i].GetChars(), ".wad", GameConfig);
 	}
@@ -3383,7 +3406,7 @@ static int D_InitGame(const FIWADInfo* iwad_info, std::vector<std::string>& allw
 
 	// [CW] Parse any TEAMINFO lumps.
 	if (!batchrun) Printf ("ParseTeamInfo: Load team definitions.\n");
-	TeamLibrary.ParseTeamInfo ();
+	FTeam::ParseTeamInfo ();
 
 	R_ParseTrnslate();
 	PClassActor::StaticInit ();
@@ -3420,7 +3443,7 @@ static int D_InitGame(const FIWADInfo* iwad_info, std::vector<std::string>& allw
 	auto numbasesounds = soundEngine->GetNumSounds();
 
 	// Load embedded Dehacked patches
-	D_LoadDehLumps(FromIWAD);
+	D_LoadDehLumps(FromIWAD, iwad_info->SkipBexStringsIfLanguage ? DEH_SKIP_BEX_STRINGS_IF_LANGUAGE : 0);
 
 	// [RH] Add any .deh and .bex files on the command line.
 	// If there are none, try adding any in the config file.
@@ -3437,13 +3460,13 @@ static int D_InitGame(const FIWADInfo* iwad_info, std::vector<std::string>& allw
 			if (stricmp (key, "Path") == 0 && FileExists (value))
 			{
 				if (!batchrun) Printf ("Applying patch %s\n", value);
-				D_LoadDehFile(value);
+				D_LoadDehFile(value, 0);
 			}
 		}
 	}
 
 	// Load embedded Dehacked patches
-	D_LoadDehLumps(FromPWADs);
+	D_LoadDehLumps(FromPWADs, 0);
 
 	// Create replacements for dehacked pickups
 	FinishDehPatch();
@@ -3658,6 +3681,7 @@ static int D_DoomMain_Internal (void)
 	const char *wad;
 	FIWadManager *iwad_man;
 
+	NetworkEntityManager::NetIDStart = MAXPLAYERS + 1;
 	GC::AddMarkerFunc(GC_MarkGameRoots);
 	VM_CastSpriteIDToString = Doom_CastSpriteIDToString;
 
@@ -3722,6 +3746,9 @@ static int D_DoomMain_Internal (void)
 
 	if (Args->CheckParm("-showcrashreport"))
 	{
+		FString text;
+		text.Format("%s has performed an illegal operation", GAMENAME);
+
 		FString minidumpFilename = Args->GetArg(2);
 		FString logFilename = Args->GetArg(3);
 		
@@ -3743,15 +3770,18 @@ static int D_DoomMain_Internal (void)
 			if (fr.OpenFile(minidumpFilename.GetChars()))
 			{
 				minidump.resize(fr.GetLength());
-				if (fr.Read(minidump.data(), minidump.size()) != (FileReader::Size)minidump.size())
+				if (fr.Read(minidump.data(), minidump.size()) == (FileReader::Size)minidump.size())
+				{
+					fr.Close();
+					I_AddMinidumpCallstack(minidumpFilename, text, logText);
+				}
+				else
 				{
 					minidump.clear();
 				}
 			}
 		}
 
-		FString text;
-		text.Format("%s fatally crashed!", GAMENAME);
 		ErrorWindow::ExecModal(text.GetChars(), logText.GetChars(), std::move(minidump));
 
 		// Crash reporter only uses -showcrashreport on Windows at the moment and there seems to be no abstraction available
@@ -3831,6 +3861,9 @@ static int D_DoomMain_Internal (void)
 		std::vector<std::string> allwads;
 		
 		const FIWADInfo *iwad_info = iwad_man->FindIWAD(allwads, iwad.GetChars(), basewad.GetChars(), optionalwad.GetChars());
+
+		GetCmdLineFiles(pwads); // [RL0] Update with files passed on the launcher extra args
+
 		if (!iwad_info) return 0;	// user exited the selection popup via cancel button.
 		if ((iwad_info->flags & GI_SHAREWARE) && pwads.size() > 0)
 		{
@@ -3906,6 +3939,7 @@ int GameMain()
 	M_SaveDefaultsFinal();
 	DeleteStartupScreen();
 	C_UninitCVars(); // must come last so that nothing will access the CVARs anymore after deletion.
+	CloseWidgetResources();
 	delete Args;
 	Args = nullptr;
 	return ret;
@@ -3998,7 +4032,7 @@ void D_Cleanup()
 //
 //==========================================================================
 
-UNSAFE_CCMD(restart)
+UNSAFE_CCMD(debug_restart)
 {
 	// remove command line args that would get in the way during restart
 	Args->RemoveArgs("-iwad");
